@@ -1,3 +1,4 @@
+
 import numpy as np
 
 cities = ["Rafineri", "Gürpınar", "Yenikapı", "Selimiye", "İçerenköy", "Tophane", "Alibeyköy", "İstinye"]
@@ -24,29 +25,20 @@ distance_matrix = np.array([
     [113, 52.1, 24.8, 19.1, 23.2, 21.7, 14.4, 0]
 ])
 
-risk_matrix = np.array([
-    [0, 0.2, 0.4, 0.8, 0.9, 0.5, 0.5, 1.0],
-    [0, 0, 0.1, 0.5, 0.4, 0.1, 0.1, 0.5],
-    [0, 0.1, 0, 0.2, 0.2, 0.1, 0.1, 0.3],
-    [0, 0.5, 0.2, 0, 0.1, 0.2, 0.2, 0.4],
-    [0, 0.4, 0.1, 0.1, 0, 0.3, 0.3, 0.5],
-    [0, 0.1, 0.1, 0.2, 0.3, 0, 0.1, 0.2],
-    [0, 0.1, 0.1, 0.2, 0.3, 0.1, 0, 0.2],
-    [0, 0.5, 0.2, 0.4, 0.5, 0.2, 0.2, 0]
-])
+hourly_speed_matrix = np.random.randint(60, 101, size=(8, 8, 12))
+hourly_risk_matrix = np.random.rand(8, 8, 12)
 
-speed_hourly_matrix = np.array([
-    [90, 80, 70, 90, 80, 70, 90, 90, 80, 90, 70, 80],
-    [80, 70, 80, 80, 70, 90, 80, 70, 70, 70, 90, 90],
-    [70, 60, 90, 70, 90, 90, 70, 90, 90, 90, 90, 70],
-    [60, 90, 60, 60, 60, 80, 60, 80, 90, 80, 80, 60],
-    [90, 90, 90, 90, 90, 80, 90, 90, 90, 90, 90, 90],
-    [80, 90, 80, 90, 70, 70, 80, 90, 70, 80, 80, 70],
-    [90, 80, 90, 90, 80, 90, 90, 90, 90, 90, 90, 90],
-    [70, 70, 90, 80, 90, 80, 70, 90, 90, 90, 90, 90]
-])
+def estimate_fuel_consumption(speed):
+    return 0.35 + (90 - speed) * 0.005
 
-service_times = {1: 30, 5: 33, 3: 32, 4: 31, 2: 40, 6: 29, 7: 20}
+fuel_consumption_matrix = np.zeros_like(hourly_speed_matrix, dtype=float)
+for i in range(8):
+    for j in range(8):
+        for t in range(12):
+            speed = hourly_speed_matrix[i, j, t]
+            fuel_consumption_matrix[i, j, t] = estimate_fuel_consumption(speed)
+
+co2_emission_factor = 2.31
 
 time_windows = {
     1: (6, 18),
@@ -58,5 +50,14 @@ time_windows = {
     7: (6, 12)
 }
 
+service_times = {
+    1: 30,
+    2: 40,
+    3: 32,
+    4: 31,
+    5: 33,
+    6: 29,
+    7: 20
+}
+
 START_HOUR = 6
-MAX_TOTAL_RISK = 1.2

@@ -1,66 +1,95 @@
 import streamlit as st
+import pandas as pd
 import folium
 from streamlit_folium import st_folium
-import pandas as pd
-import numpy as np
 import plotly.express as px
 
 from optimizer import get_best_route
-from data_config import cities, city_coords
-from sensitivity import risk_vs_time_analysis, speed_sensitivity_analysis
-from utils import plot_risk_vs_time, plot_speed_sensitivity, plot_risk_distribution
+from data_config import cities, city_coords, hourly_risk_matrix, hourly_speed_matrix, fuel_consumption_matrix
+from visualizer import create_animated_map
 
-st.set_page_config(layout="wide")
-st.title("🚐 Zaman Pencereli ve Risk Kısıtlı Araç Rotalama - İstanbul")
+st.set_page_config(layout="wide", page_title="Akıllı Rota Planlayıcı")
+st.title("🚛 Akıllı ve Sürdürülebilir Rota Planlayıcı")
 
-# Sidebar parametreler
-st.sidebar.header("⚙️ Parametreler")
-max_risk = st.sidebar.slider("Maksimum Toplam Risk", 0.0, 3.0, 1.2, 0.1)
-generations = st.sidebar.slider("Nesil Sayısı", 100, 2000, 1000, 100)
-pop_size = st.sidebar.slider("Popülasyon Büyüklüğü", 10, 500, 300, 10)
+if "show_results" not in st.session_state:
+    st.session_state.show_results = False
+    st.session_state.sonuc = None
 
-# Kullanıcı analizi seçsin
-mode = st.sidebar.radio("İşlem Seçiniz:", ["🚀 Optimizasyon", "🔬 Duyarlılık Analizi"])
+with st.sidebar:
+    st.header("⚙️ Optimizasyon Ayarları")
+    pop_size = st.slider("Popülasyon Büyüklüğü", 50, 500, 100, 10)
+    generations = st.slider("Nesil Sayısı", 100, 2000, 300, 100)
+    hedef = st.radio("Amaç Fonksiyonu", ["süre", "emisyon", "denge", "tümü"])
+    hesapla = st.button("🚀 Rota Hesapla")
 
-if mode == "🚀 Optimizasyon":
-    if st.button("Rota Hesapla"):
-        with st.spinner("En iyi rota hesaplanıyor..."):
-            result = get_best_route(max_risk=max_risk, generations=generations, pop_size=pop_size)
+if hesapla:
+    with st.spinner("En iyi rota hesaplanıyor..."):
+        result = get_best_route(pop_size=pop_size, generations=generations, hedef=hedef)
+        if result:
+            st.session_state.sonuc = result
+            st.session_state.show_results = True
 
-        if result is None:
-            st.error("Hiçbir uygun rota bulunamadı. Parametreleri gözden geçirin.")
-        else:
-            d, t, r, log, route = result
+if st.session_state.show_results and st.session_state.sonuc:
+    route, total_time, total_fuel, total_co2, total_risk, log = st.session_state.sonuc
 
-            m = folium.Map(location=[41.0, 28.95], zoom_start=11)
-            for i in range(len(route) - 1):
-                c1, c2 = cities[route[i]], cities[route[i+1]]
-                folium.Marker(location=city_coords[c1], popup=c1, tooltip=c1).add_to(m)
-                folium.PolyLine(locations=[city_coords[c1], city_coords[c2]], color='blue').add_to(m)
+    tabs = st.tabs(["🗺️ Rota Haritası", "📊 Parametre Dağılımı", "📈 İstatistikler", "📋 Senaryo Karşılaştır", "🎞️ Animasyonlu Rota"])
 
-            st.subheader("🗺️ Optimum Rota Haritası")
-            st_folium(m, width=900)
+    with tabs[0]:
+        st.subheader("🗺️ İstanbul Haritasında Rota")
+        m = folium.Map(location=[41.0, 28.95], zoom_start=11)
+        for i in range(len(route) - 1):
+            c1, c2 = cities[route[i]], cities[route[i+1]]
+            time = log[i]["travel_min"]
+            label = f"{time} dk"
+            folium.PolyLine(
+                locations=[city_coords[c1], city_coords[c2]],
+                tooltip=label,
+                color='blue', weight=5, opacity=0.7
+            ).add_to(m)
+            folium.Marker(location=city_coords[c1], popup=c1).add_to(m)
+        st_folium(m, width=900)
 
-            h, m_ = int(t // 60), int(t % 60)
-            st.success(f"**En iyi rota:** {' → '.join(cities[i] for i in route)}")
-            st.write(f"**Toplam Mesafe:** {round(d, 2)} km")
-            st.write(f"**Toplam Risk:** {round(r, 2)}")
-            st.write(f"**Tahmini Süre:** {h} saat {m_} dakika")
+    with tabs[1]:
+        st.subheader("📊 Parametre Dağılım Grafikleri")
+        risk_vals = hourly_risk_matrix.flatten()
+        speed_vals = hourly_speed_matrix.flatten()
+        fuel_vals = fuel_consumption_matrix.flatten()
 
-            st.subheader("⏱️ Zaman Çizelgesi")
-            df = pd.DataFrame(log)
-            st.dataframe(df, use_container_width=True)
+        col1, col2 = st.columns(2)
+        with col1:
+            st.plotly_chart(px.histogram(x=risk_vals, nbins=30, title="Risk Dağılımı"), use_container_width=True)
+            st.plotly_chart(px.histogram(x=speed_vals, nbins=30, title="Hız Dağılımı"), use_container_width=True)
+        with col2:
+            st.plotly_chart(px.box(x=fuel_vals, title="Yakıt Tüketimi Boxplot"), use_container_width=True)
 
-            st.subheader("📊 Rota Risk Dağılımı")
-            st.plotly_chart(plot_risk_distribution(log), use_container_width=True)
+    with tabs[2]:
+        st.subheader("📈 Rota Özeti ve İstatistikler")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Toplam Süre", f"{int(total_time)} dk")
+        col2.metric("Toplam Emisyon", f"{total_co2:.2f} kg CO₂")
+        col3.metric("Toplam Risk", f"{total_risk:.2f}")
 
-elif mode == "🔬 Duyarlılık Analizi":
-    st.subheader("📉 Risk Sınırı vs. Süre")
-    df_risk = risk_vs_time_analysis(np.arange(0.6, 2.1, 0.2), generations=generations, pop_size=pop_size)
-    st.plotly_chart(plot_risk_vs_time(df_risk), use_container_width=True)
-    st.dataframe(df_risk, use_container_width=True)
+        df_log = pd.DataFrame(log)
+        st.dataframe(df_log, use_container_width=True)
 
-    st.subheader("🚗 Hız Değişimi vs. Süre")
-    df_speed = speed_sensitivity_analysis()
-    st.plotly_chart(plot_speed_sensitivity(df_speed), use_container_width=True)
-    st.dataframe(df_speed, use_container_width=True)
+    with tabs[3]:
+        st.subheader("📋 Çoklu Hedef Senaryo Karşılaştırması")
+        senaryolar = ["süre", "emisyon", "denge", "tümü"]
+        data = []
+        for s in senaryolar:
+            r = get_best_route(pop_size=pop_size, generations=generations, hedef=s)
+            if r:
+                route_, t, f, c, risk, _ = r
+                data.append({"Senaryo": s, "Süre": t, "CO₂": c, "Risk": risk})
+        df_compare = pd.DataFrame(data)
+        st.dataframe(df_compare, use_container_width=True)
+        st.plotly_chart(px.bar(df_compare.melt(id_vars=["Senaryo"], var_name="Kriter", value_name="Değer"),
+                               x="Senaryo", y="Değer", color="Kriter", barmode="group",
+                               title="Senaryolar Arası Karşılaştırma"), use_container_width=True)
+
+    with tabs[4]:
+        st.subheader("🎞️ Adım Adım Rota Gösterimi")
+        animated_map = create_animated_map(route, log)
+        st_folium(animated_map, width=900)
+elif not hesapla:
+    st.info("Rota hesaplamak için lütfen '🚀 Rota Hesapla' butonuna basın.")
