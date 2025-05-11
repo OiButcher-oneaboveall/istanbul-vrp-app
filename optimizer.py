@@ -133,7 +133,6 @@ def mutate(route, rate=0.02):
 def get_best_route(max_risk=1.2, generations=1000, pop_size=300):
     global MAX_TOTAL_RISK
     MAX_TOTAL_RISK = max_risk
-
     population = initialize_population(pop_size, len(cities))
     for _ in range(generations):
         new_pop = []
@@ -144,7 +143,6 @@ def get_best_route(max_risk=1.2, generations=1000, pop_size=300):
             mutate(c)
             new_pop.append(c)
         population = new_pop
-
     valid_population = [r for r in population if fitness(r) != float('inf')]
     if valid_population:
         best_route = min(valid_population, key=fitness)
